@@ -1,0 +1,453 @@
+---
+title: "Covid-19 Cases in Malawi" 
+author: "Clinton Nkolokosa"
+output: 
+  flexdashboard::flex_dashboard:
+    orientation: rows
+    source_code: embed
+    vertical_layout: fill
+---
+
+```{r setup, include=FALSE}
+#------------------ Packages ------------------
+library(flexdashboard)
+library(devtools)
+#devtools::install_github("RamiKrispin/coronavirus", force = TRUE)
+library(coronavirus)
+library(leaflet)
+library(leafpop)
+library(purrr)
+library(rgdal)
+library(dplyr)
+library(leaflet)
+library(leaflet.extras)
+library(htmltools)
+library(tidyverse)
+library(RColorBrewer)
+library(scales)
+library(lubridate)
+library(gganimate)
+library(gifski)
+
+`%>%` <- magrittr::`%>%`
+#------------------ Parameters ------------------
+# Set colors
+# https://www.w3.org/TR/css-color-3/#svg-color
+confirmed_color <- "purple"
+active_color <- "blue"
+recovered_color <- "forestgreen"
+death_color <- "red"
+#------------------ Data ------------------
+df <- coronavirus %>%
+  dplyr::filter(country == "Malawi") %>%
+  dplyr::group_by(country, type) %>%
+  dplyr::summarise(total = sum(cases)) %>%
+  tidyr::pivot_wider(
+    names_from = type,
+    values_from = total
+  ) %>%
+  
+  dplyr::mutate(unrecovered = confirmed - ifelse(is.na(death), 0, death)) %>%
+  dplyr::arrange(-confirmed) %>%
+  dplyr::ungroup() %>%
+  dplyr::mutate(country = dplyr::if_else(country == "United Arab Emirates", "UAE", country)) %>%
+  dplyr::mutate(country = dplyr::if_else(country == "Mainland China", "China", country)) %>%
+  dplyr::mutate(country = dplyr::if_else(country == "North Macedonia", "N.Macedonia", country)) %>%
+  dplyr::mutate(country = trimws(country)) %>%
+  dplyr::mutate(country = factor(country, levels = country))
+
+df_daily <- coronavirus %>%
+  dplyr::filter(country == "Malawi") %>%
+  dplyr::group_by(date, type) %>%
+  dplyr::summarise(total = sum(cases, na.rm = TRUE)) %>%
+  tidyr::pivot_wider(
+    names_from = type,
+    values_from = total
+  ) %>%
+  dplyr::arrange(date) %>%
+  dplyr::ungroup() %>%
+  dplyr::mutate(active = confirmed - death) %>%
+  dplyr::mutate(
+    confirmed_cum = cumsum(confirmed),
+    death_cum = cumsum(death),
+    active_cum = cumsum(active)
+  )
+
+
+df1 <- coronavirus %>% dplyr::filter(date == max(date))
+
+setwd("~/R/Covid visualisation/R")
+
+d<-readOGR(dsn = getwd(),layer = "census_dist")
+cd<-read.csv("Covid cases per district (copy).csv") %>% 
+  mutate(active_cases= Confirmed-(Deaths+Recovered))
+dist<-merge(d,cd,by.x="fid",by.y="Fid")
+
+#covid<-read_csv("time-series-19-covid-combined-16-oct.csv")
+covid <- read_csv("https://raw.githubusercontent.com/datasets/covid-19/master/data/time-series-19-covid-combined.csv")
+# Remove unnecessary Columns and Rename
+covid <- covid %>% 
+  select(Date,country=`Country/Region`, Confirmed, Recovered,Deaths)
+
+# Create a useful data frame
+covid_stat<- covid %>% 
+  group_by(country) %>% 
+  summarise(Death=max(Deaths),Confirmed =max(Confirmed), Recovered=max(Recovered)) %>% 
+  mutate(Active_case = Confirmed - Recovered)
+
+
+```
+
+
+
+Map
+=======================================================================
+
+### **Districts with Covid-19 cases** | `r format(Sys.time(), "%A %B %d, %Y")` | Clinty 
+
+```{r}
+
+df <- coronavirus %>%
+  dplyr::filter(country == "Malawi" |
+    country == "Zambia" |
+    country == "Tanzania" |
+    country == "Mozambique") %>%
+  dplyr::group_by(country, type) %>%
+  dplyr::summarise(total = sum(cases)) %>%
+  tidyr::pivot_wider(
+    names_from = type,
+    values_from = total
+  ) %>%
+  dplyr::mutate(unrecovered = confirmed - ifelse(is.na(death), 0, death)) %>%
+  dplyr::arrange(confirmed) %>%
+  dplyr::ungroup() %>%
+  dplyr::mutate(country = dplyr::if_else(country == "United Arab Emirates", "UAE", country)) %>%
+  dplyr::mutate(country = dplyr::if_else(country == "Mainland China", "China", country)) %>%
+  dplyr::mutate(country = dplyr::if_else(country == "North Macedonia", "N.Macedonia", country)) %>%
+  dplyr::mutate(country = trimws(country)) %>%
+  dplyr::mutate(country = factor(country, levels = country))
+
+bar<-plotly::plot_ly(
+  data = df,
+  x = ~country,
+  y = ~ confirmed,
+  type = "bar",
+  name = "Confirmed",
+  marker = list(color = active_color)
+) %>%
+  plotly::add_trace(
+    y = ~death,
+    name = "Death",
+    marker = list(color = death_color)
+  ) %>%
+  plotly::add_trace(
+    y = ~recovered,
+    name = "Recovered",
+    marker = list(color = recovered_color)
+  ) %>% 
+  plotly::layout(
+    barmode = "stack",
+    yaxis = list(title = "Total cases"),
+    xaxis = list(title = ""),
+    hovermode = "compare",
+    margin = list(
+      b = 10,
+      t = 10,
+      pad = 2
+    )
+  )
+
+# Map title using CSS styles and HTML
+
+title<-tags$style(HTML(".map-title{
+                  transform:translate(-10%,20%);position:fixed!important;
+                  left:10%;text-align:left;padding-left:10px;
+                  padding-right:10px;background:rgba(255,255,255,0.75);
+                  font-weight:bold;font-size:15px}"))
+
+leaflettitle<-tags$div(title, HTML("Matenda a Corona virus ndi opeweka"))
+
+bins<-c(0,1,5,10,50,100,500,1000,1500,2000)
+pal<-colorBin("YlOrRd",domain = dist,bins=bins)
+
+labels<-paste("<h3 style='color:red'>Covid-19 cases</h3>",
+              "<b>",cd$District,"<br>",
+              "<b>Confirmed:</b>",cd$Confirmed,"<br>",
+              "<b>Deaths:</b>",cd$Deaths,"<br>",
+              "<b>Recovered:</b>",cd$Recovered,"<br>",
+              "<b>Active cases:</b>",cd$active_cases,"<br>",
+              sep = " ")
+
+covid.map<-leaflet() %>%
+  setView(lng = 33.7,lat =  -13.9, zoom= 6) %>% 
+  addProviderTiles(providers$CartoDB)%>% 
+  addPolygons(data = dist,
+              group = "active_cases",
+              weight = 1,
+              smoothFactor = 1,
+              color = "gray",
+              fillOpacity = 1,
+              fillColor =~pal(active_cases),
+              label = lapply(labels,HTML)) %>% 
+  addPolygons(data = dist,
+              group = "Confirmed",
+              weight = 1,
+              smoothFactor = 1,
+              color = "gray",
+              fillOpacity = 1,
+              fillColor =~pal(Confirmed),
+              label = lapply(labels,HTML)) %>% 
+  addPolygons(data = dist,
+              group = "Deaths",
+              weight = 1,
+              smoothFactor = 1,
+              color = "gray",
+              fillOpacity = 1,
+              fillColor =~pal(Deaths),
+              label = lapply(labels,HTML)) %>% 
+  addPolygons(data = dist,
+              group = "Recovered",
+              weight = 1,
+              smoothFactor = 1,
+              color = "gray",
+              fillOpacity = 1,
+              fillColor =~pal(Recovered),
+              label = lapply(labels,HTML)) %>% 
+  addLayersControl(baseGroups = c( "Active", "Confirmed","Deaths","Recovered"),
+                   options = layersControlOptions(collapsed = FALSE)) %>% 
+  addLegend(pal = pal,values = c(1:2000),
+            opacity = 0.7,
+            title = 'Covid-19 Cases',
+            position = 'bottomright') %>% 
+  addScaleBar(position= 'bottomleft') %>% 
+  addControl(leaflettitle,position = "topleft",className = "map-title")
+
+covid.map
+```
+
+
+Summary
+=======================================================================
+
+Row {data-width=400}
+-----------------------------------------------------------------------
+
+### confirmed {.value-box}
+
+```{r}
+d <-df %>% 
+  filter(country == "Malawi")
+valueBox(
+  value = paste(format(sum(d$confirmed), big.mark = ","), "", sep = " "),
+  caption = "Total confirmed cases",
+  icon = "fas fa-user-md",
+  color = confirmed_color
+)
+```
+
+
+### death {.value-box}
+
+```{r}
+
+valueBox(
+  value = paste(format(sum(d$death, na.rm = TRUE), big.mark = ","), " (",
+    round(100 * sum(df$death, na.rm = TRUE) / sum(df$confirmed), 1),
+    "%)",
+    sep = ""
+  ),
+  caption = "Death cases (death rate)",
+  icon = "fas fa-heart-broken",
+  color = death_color
+)
+```
+
+### recovered {.value-box}
+
+```{r}
+
+valueBox(
+  value = paste(format(sum(d$recovered, na.rm = TRUE), big.mark = ","), " ",sep = ""),
+  caption = "Total recovered cases",
+  color = recovered_color
+)
+```
+
+
+Row
+-----------------------------------------------------------------------
+
+### **Daily cumulative cases** | Malawi
+    
+```{r}
+plotly::plot_ly(data = df_daily) %>%
+  plotly::add_trace(
+    x = ~date,
+    y = ~confirmed_cum,
+    type = "scatter",
+    mode = "lines+markers",
+    name = "Confirmed",
+    line = list(color = active_color),
+    marker = list(color = active_color)
+  ) %>%
+  plotly::add_trace(
+    x = ~date,
+    y = ~death_cum,
+    type = "scatter",
+    mode = "lines+markers",
+    name = "Death",
+    line = list(color = death_color),
+    marker = list(color = death_color)
+  ) %>%
+  plotly::layout(
+    title = "",
+    yaxis = list(title = "Cumulative number of cases"),
+    xaxis = list(title = "Date"),
+    legend = list(x = 0.1, y = 0.9),
+    hovermode = "compare"
+  )
+```
+
+Comparison
+=======================================================================
+
+
+Column {data-width=400}
+-------------------------------------
+
+
+### **Cases distribution by type in districts**
+    
+```{r}
+
+ cd %>% filter(District != "Zomba City",
+               District != "Lilongwe",
+               District != "Blantyre") %>% 
+# cd %>% filter(District %in% c("Chitipa","Karonga","NkhataBay",
+#                               "Rumphi","Mzimba",
+#                             "Likoma","Kasungu","Nkhotakota","Ntchisi","Dowa",
+#                               "Salima","Lilongwe City",
+#                               "Mchinji","Dedza","Ntcheu",
+#                               "Mangochi","Machinga","ZombaCity","Chiradzulu",
+#                               "Blantyre City","Thyolo","Mulanje","Phalombe",
+#                               "Chikwawa","Nsanje","Balaka",
+#                               "Neno","Mwanza","Mzuzu City"))%>% 
+  
+  plotly::plot_ly(
+  y = ~ District,
+  x = ~ Confirmed,
+  type = "bar",
+  orientation = 'h',
+  name = "Confirmed",
+  marker = list(color = confirmed_color)
+ ) %>%
+  plotly::add_trace(
+    x = ~ Deaths,
+    name = "Death",
+    marker = list(color = death_color)
+  ) %>%
+  plotly::add_trace(
+    x = ~ Recovered,
+    name = "Recovered",
+    marker = list(color = recovered_color)
+  ) %>% 
+   plotly::add_trace(
+    x = ~ active_cases,
+    name = "Active",
+    marker = list(color = active_color)
+   ) %>% 
+  plotly::layout(
+    barmode = "stack",
+    xaxis = list(title = "Total cases"),
+    yaxis = list(title = ""),
+    hovermode = "compare",
+    margin = list(
+      b = 10,
+      t = 10,
+      pad = 2
+    )
+  )
+  
+```
+ 
+### **Cases distribution by type in neighboring countries **
+
+```{r daily_summary}
+df <- coronavirus %>%
+  dplyr::filter(country == "Malawi" |
+    country == "Zambia" |
+    country == "Tanzania" |
+    country == "Mozambique") %>%
+  dplyr::group_by(country, type) %>%
+  dplyr::summarise(total = sum(cases)) %>%
+  tidyr::pivot_wider(
+    names_from = type,
+    values_from = total
+  ) %>%
+  dplyr::mutate(unrecovered = confirmed - ifelse(is.na(death), 0, death)) %>%
+  dplyr::arrange(confirmed) %>%
+  dplyr::ungroup() %>%
+  dplyr::mutate(country = dplyr::if_else(country == "United Arab Emirates", "UAE", country)) %>%
+  dplyr::mutate(country = dplyr::if_else(country == "Mainland China", "China", country)) %>%
+  dplyr::mutate(country = dplyr::if_else(country == "North Macedonia", "N.Macedonia", country)) %>%
+  dplyr::mutate(country = trimws(country)) %>%
+  dplyr::mutate(country = factor(country, levels = country))
+
+plotly::plot_ly(
+  data = df,
+  x = ~country,
+  y = ~ confirmed,
+  type = "bar",
+  name = "Confirmed",
+  marker = list(color = confirmed_color)
+) %>%
+  plotly::add_trace(
+    y = ~death,
+    name = "Death",
+    marker = list(color = death_color)
+  ) %>%
+  plotly::add_trace(
+    y = ~recovered,
+    name = "Recovered",
+    marker = list(color = recovered_color)
+  ) %>% 
+  plotly::layout(
+    barmode = "stack",
+    yaxis = list(title = "Total cases"),
+    xaxis = list(title = ""),
+    hovermode = "compare",
+    margin = list(
+      b = 10,
+      t = 10,
+      pad = 2
+    )
+  )
+```
+
+
+About
+=======================================================================
+
+**The Covid-19 Dashboard for Malawi**
+
+This [Covid-19 dashboard for Malawi](https://rpubs.com/Clinty) provides an overview of the 2019 Novel Coronavirus COVID-19 (2019-nCoV) pandemic. This dashboard is built with R using the R Markdown framework and was adapted from this [dashboard](https://ramikrispin.github.io/coronavirus_dashboard/){target="_blank"} by Rami Krispin.
+
+
+**Data**
+
+The input data for this dashboard is available from the [`{coronavirus}`](https://github.com/RamiKrispin/coronavirus){target="_blank"} R package. Make sure to download the development version of the package to have the latest data:
+
+```
+install.packages("devtools")
+devtools::install_github("RamiKrispin/coronavirus")
+```
+
+The data and dashboard are refreshed on a daily basis.
+
+The raw data is pulled from the Johns Hopkins University Center for Systems Science and Engineering (JHU CCSE) Coronavirus [repository](https://github.com/RamiKrispin/coronavirus-csv){target="_blank"}.
+
+
+**Update**
+
+The data is as of `r format(max(coronavirus$date), "%A %B %d, %Y")` and the dashboard has been updated on `r format(Sys.time(), "%A %B %d, %Y")`.
+
