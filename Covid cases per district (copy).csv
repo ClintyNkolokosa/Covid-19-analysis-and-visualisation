@@ -1,33 +1,33 @@
 Fid,District,Confirmed ,Deaths,Recovered
 1,Chitipa,64,3,61
-2,Karonga,82,4,75
-3,NkhataBay,196,2,192
-4,Rumphi,36,3,32
+2,Karonga,84,4,75
+3,NkhataBay,196,2,193
+4,Rumphi,40,3,34
 5,Mzimba,154,3,143
 6,Likoma,4,2,2
 7,Kasungu,49,1,38
-8,Nkhotakota,84,1,81
+8,Nkhotakota,87,1,81
 9,Ntchisi,4,0,3
-10,Dowa,87,3,76
+10,Dowa,95,3,86
 11,Salima,47,0,47
-12,Lilongwe,1353,49,609
+12,Lilongwe,1386,49,1158
 13,Mchinji,66,5,45
-14,Dedza,50,0,30
-15,Ntcheu,45,1,44
-16,Mangochi,149,2,146
-17,Machinga,73,0,69
-18,Zomba ,156,6,143
+14,Dedza,52,0,30
+15,Ntcheu,49,1,44
+16,Mangochi,152,2,147
+17,Machinga,70,0,69
+18,Zomba ,157,7,143
 19,Chiradzulu,47,1,42
-20,Blantyre,1979,76,1837
-21,Thyolo,68,1,65
-22,Mulanje,43,1,41
+20,Blantyre,2002,78,1858
+21,Thyolo,68,1,67
+22,Mulanje,43,1,37
 23,Phalombe,11,1,8
-24,Chikwawa,46,0,44
+24,Chikwawa,44,0,44
 25,Nsanje,37,1,31
-26,Balaka,49,1,45
+26,Balaka,48,1,45
 27,Neno,59,0,58
-28,Lilongwe City,1353,49,609
-31,Zomba City,156,6,143
-32,Mwanza,232,1,230
-29,Mzuzu City,566,13,303
-30,Blantyre City,1979,76,1837
+28,Lilongwe City,1386,49,1158
+31,Zomba City,157,7,143
+32,Mwanza,231,1,230
+29,Mzuzu City,588,13,499
+30,Blantyre City,2002,78,1858
